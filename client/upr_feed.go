@@ -173,7 +173,7 @@ loop:
 	// Closing transmitCh to make such prolematic write attempts more evident.
 	// Care has been taken to ensure that internal APIs do not write to transmitCh after sendCommands exits.
 	// Public APIs that write to transmitCh, e.g., CloseStream(), need to check feed closure before they do the write.
-	feed.closeTransmitCh()
+	close(transmitCh)
 	logging.Infof("sendCommands exiting")
 }
 
