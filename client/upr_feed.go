@@ -667,7 +667,7 @@ loop:
 	// make sure that feed is closed before we signal transmitCl and exit runFeed
 	feed.Close()
 
-	feed.transmitCl <- true
+	close(feed.transmitCl)
 	logging.Infof("runFeed exiting")
 }
 
