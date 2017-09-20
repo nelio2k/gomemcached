@@ -352,21 +352,27 @@ func (feed *UprFeed) UprRequestStream(vbno, opaqueMSB uint16, flags uint32,
 	binary.BigEndian.PutUint64(rq.Extras[32:40], snapStart)
 	binary.BigEndian.PutUint64(rq.Extras[40:48], snapEnd)
 
-	feed.mu.Lock()
-	defer feed.mu.Unlock()
-
-	if err := feed.conn.Transmit(rq); err != nil {
-		logging.Errorf("Error in StreamRequest %s", err.Error())
-		return err
-	}
-
 	stream := &UprStream{
 		Vbucket:  vbno,
 		Vbuuid:   vuuid,
 		StartSeq: startSequence,
 		EndSeq:   endSequence,
 	}
+
+	feed.mu.Lock()
+	// Any client that has ever called this method, regardless of return code,
+	// should expect a potential UPR_CLOSESTREAM message due to this new map entry prior to Transmit.
 	feed.vbstreams[vbno] = stream
+	feed.mu.Unlock()
+
+	if err := feed.conn.Transmit(rq); err != nil {
+		logging.Errorf("Error in StreamRequest %s", err.Error())
+		// If an error occurs during transmit, then the UPRFeed will keep the stream
+		// in the vbstreams map. This is to prevent nil lookup from any previously
+		// sent stream requests.
+		return err
+	}
+
 	return nil
 }
 
@@ -469,15 +475,25 @@ func handleStreamRequest(
 // generate stream end responses for all active vb streams
 func (feed *UprFeed) doStreamClose(ch chan *UprEvent) {
 	feed.mu.RLock()
-	for vb, stream := range feed.vbstreams {
+
+	uprEvents := make([]*UprEvent, len(feed.vbstreams))
+	index := 0
+	for vbno, stream := range feed.vbstreams {
 		uprEvent := &UprEvent{
-			VBucket: vb,
+			VBucket: vbno,
 			VBuuid:  stream.Vbuuid,
 			Opcode:  gomemcached.UPR_STREAMEND,
 		}
+		uprEvents[index] = uprEvent
+		index++
+	}
+
+	// release the lock before sending uprEvents to ch, which may block
+	feed.mu.RUnlock()
+
+	for _, uprEvent := range uprEvents {
 		ch <- uprEvent
 	}
-	feed.mu.RUnlock()
 }
 
 func (feed *UprFeed) runFeed(ch chan *UprEvent) {
