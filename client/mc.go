@@ -55,6 +55,8 @@ type Client struct {
 var (
 	DefaultDialTimeout = time.Duration(0) // No timeout
 
+	DefaultWriteTimeout = time.Duration(0) // No timeout
+
 	dialFun = func(prot, dest string) (net.Conn, error) {
 		return net.DialTimeout(prot, dest, DefaultDialTimeout)
 	}
@@ -106,9 +108,8 @@ func (c Client) IsHealthy() bool {
 
 // Send a custom request and get the response.
 func (c *Client) Send(req *gomemcached.MCRequest) (rv *gomemcached.MCResponse, err error) {
-	_, err = transmitRequest(c.conn, req)
+	err = c.Transmit(req)
 	if err != nil {
-		c.setHealthy(false)
 		return
 	}
 	resp, _, err := getResponse(c.conn, c.hdrBuf)
@@ -118,7 +119,14 @@ func (c *Client) Send(req *gomemcached.MCRequest) (rv *gomemcached.MCResponse, e
 
 // Transmit send a request, but does not wait for a response.
 func (c *Client) Transmit(req *gomemcached.MCRequest) error {
+	if DefaultWriteTimeout > 0 {
+		c.conn.(net.Conn).SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
+	}
 	_, err := transmitRequest(c.conn, req)
+	// clear write deadline to avoid interference with future write operations
+	if DefaultWriteTimeout > 0 {
+		c.conn.(net.Conn).SetWriteDeadline(time.Time{})
+	}
 	if err != nil {
 		c.setHealthy(false)
 	}
@@ -127,7 +135,14 @@ func (c *Client) Transmit(req *gomemcached.MCRequest) error {
 
 // TransmitResponse send a response, does not wait.
 func (c *Client) TransmitResponse(res *gomemcached.MCResponse) error {
+	if DefaultWriteTimeout > 0 {
+		c.conn.(net.Conn).SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
+	}
 	_, err := transmitResponse(c.conn, res)
+	// clear write deadline to avoid interference with future write operations
+	if DefaultWriteTimeout > 0 {
+		c.conn.(net.Conn).SetWriteDeadline(time.Time{})
+	}
 	if err != nil {
 		c.setHealthy(false)
 	}
@@ -972,7 +987,7 @@ func (c *Client) Stats(key string) ([]StatValue, error) {
 		Opaque: 918494,
 	}
 
-	_, err := transmitRequest(c.conn, req)
+	err := c.Transmit(req)
 	if err != nil {
 		return rv, err
 	}
@@ -1007,7 +1022,7 @@ func (c *Client) StatsMap(key string) (map[string]string, error) {
 		Opaque: 918494,
 	}
 
-	_, err := transmitRequest(c.conn, req)
+	err := c.Transmit(req)
 	if err != nil {
 		return rv, err
 	}
@@ -1042,7 +1057,7 @@ func (c *Client) StatsMapForSpecifiedStats(key string, statsMap map[string]strin
 		Opaque: 918494,
 	}
 
-	_, err := transmitRequest(c.conn, req)
+	err := c.Transmit(req)
 	if err != nil {
 		return err
 	}
