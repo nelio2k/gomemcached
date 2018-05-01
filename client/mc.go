@@ -71,9 +71,13 @@ func Connect(prot, dest string) (rv *Client, err error) {
 	return Wrap(conn)
 }
 
-func SetDefaultTimeouts(dail, read, write time.Duration) {
-	DefaultDialTimeout = dail
+func SetDefaultTimeouts(dial, read, write time.Duration) {
+	DefaultDialTimeout = dial
 	DefaultWriteTimeout = write
+}
+
+func SetDefaultDialTimeout(dial time.Duration) {
+	DefaultDialTimeout = dial
 }
 
 func (c *Client) SetKeepAliveOptions(interval time.Duration) {
@@ -83,6 +87,10 @@ func (c *Client) SetKeepAliveOptions(interval time.Duration) {
 
 func (c *Client) SetReadDeadline(t time.Time) {
 	c.conn.(*net.TCPConn).SetReadDeadline(t)
+}
+
+func (c *Client) SetDeadline(t time.Time) {
+	c.conn.(*net.TCPConn).SetDeadline(t)
 }
 
 // Wrap an existing transport.
