@@ -76,10 +76,21 @@ const (
 	XattrDataType  uint8 = 4
 )
 
+type PriorityType string
+
+// high > medium > disabled > low
+const (
+	PriorityDisabled PriorityType = ""
+	PriorityLow      PriorityType = "low"
+	PriorityMed      PriorityType = "medium"
+	PriorityHigh     PriorityType = "high"
+)
+
 type UprFeatures struct {
 	Xattribute          bool
 	CompressionType     int
 	IncludeDeletionTime bool
+	SetPriority         PriorityType
 }
 
 /**
@@ -560,6 +571,19 @@ func (feed *UprFeed) uprOpen(name string, sequence uint32, bufSize uint32, featu
 		return
 	}
 	activatedFeatures.CompressionType = features.CompressionType
+
+	if features.SetPriority != PriorityDisabled {
+		rq = &gomemcached.MCRequest{
+			Opcode: gomemcached.UPR_CONTROL,
+			Key:    []byte("set_priority"),
+			Body:   []byte(features.SetPriority),
+			Opaque: getUprOpenCtrlOpaque(),
+		}
+		err = sendMcRequestSync(feed.conn, rq)
+		if err != nil {
+			return
+		}
+	}
 
 	return
 }
